@@ -160,6 +160,21 @@ def generate_patch(payload: dict = Body(...)):
         if ssh_key:
             # Use GIT_SSH_COMMAND to instruct git to use the mounted private key
             push_env['GIT_SSH_COMMAND'] = f"ssh -i {ssh_key} -o StrictHostKeyChecking=no"
+            # If origin is an https GitHub URL, switch it to the SSH form so the GIT_SSH_COMMAND is used.
+            try:
+                remote_res = run_cmd(["git", "remote", "get-url", "origin"], cwd=working_repo, check=False)
+                remote_url = (remote_res.stdout or "").strip() if hasattr(remote_res, 'stdout') else ''
+                if remote_url.startswith('https://github.com/'):
+                    owner_path = remote_url[len('https://github.com/'):]
+                    owner_path = owner_path.rstrip('\n').rstrip('/')
+                    if owner_path.endswith('.git'):
+                        owner_path = owner_path[:-4]
+                    ssh_url = f"git@github.com:{owner_path}.git"
+                    print(f"Converting origin remote to SSH URL: {ssh_url}")
+                    run_cmd(["git", "remote", "set-url", "origin", ssh_url], cwd=working_repo, check=True)
+            except Exception as e:
+                print("Warning: could not inspect or convert origin remote:", e)
+        # Perform the push (may still fail if credentials missing)
         run_cmd(["git", "push", "origin", branch_name], cwd=working_repo, env=push_env)
     except Exception as e:
         print("Aviso: push falhou (provavelmente sem credenciais configuradas):", e)
@@ -205,11 +220,53 @@ def generate_patch(payload: dict = Body(...)):
             raise RuntimeError(f"Jar não encontrado no target em {target_dir}")
         jar_path = os.path.join(target_dir, jar_files[0])
 
-        # Run jar in background
-        proc = subprocess.Popen(["java", "-jar", jar_path], cwd=tmpdir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # Run jar in background and wait until it accepts connections on port 8080
+        proc = subprocess.Popen(["java", "-jar", jar_path], cwd=tmpdir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
-            # Wait for app to start (naive sleep)
-            time.sleep(5)
+            # Wait until the app is listening on 127.0.0.1:8080 or the process exits
+            start = time.time()
+            timeout = int(os.getenv('GENERATOR_APP_START_TIMEOUT', '30'))
+            host = '127.0.0.1'
+            port = 8080
+            import socket
+
+            def port_open(h, p):
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(0.5)
+                try:
+                    s.connect((h, p))
+                    s.close()
+                    return True
+                except Exception:
+                    return False
+
+            while True:
+                if port_open(host, port):
+                    print(f"Detected service listening on {host}:{port}")
+                    break
+                if proc.poll() is not None:
+                    # process exited before binding — capture stderr and abort
+                    out = ''
+                    err = ''
+                    try:
+                        out = proc.stdout.read()
+                    except Exception:
+                        pass
+                    try:
+                        err = proc.stderr.read()
+                    except Exception:
+                        pass
+                    raise RuntimeError(f"App process exited before listening on {host}:{port}. stdout:\n{out}\nstderr:\n{err}")
+                if time.time() - start > timeout:
+                    print(f"Timeout waiting for app to start after {timeout}s")
+                    try:
+                        # attempt to show any stderr captured so far
+                        err = proc.stderr.read()
+                        print("App stderr (partial):", err)
+                    except Exception:
+                        pass
+                    raise RuntimeError(f"Timeout waiting for app to start on {host}:{port}")
+                time.sleep(0.5)
 
             # Generate a simple k6 script file
             k6_script = os.path.join(tmpdir, "k6_test.js")
