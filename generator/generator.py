@@ -145,7 +145,13 @@ def generate_patch(payload: dict = Body(...)):
     except Exception as e:
         print("Warning: failed to ensure git identity:", e)
 
-    run_cmd(["git", "commit", "-m", "Auto patch generated for hotspot"], cwd=working_repo, check=True)
+    # Only commit if there are staged changes
+    status_res = run_cmd(["git", "status", "--porcelain"], cwd=working_repo, check=False)
+    status_out = (status_res.stdout or "").strip() if hasattr(status_res, 'stdout') else ''
+    if status_out:
+        run_cmd(["git", "commit", "-m", "Auto patch generated for hotspot"], cwd=working_repo, check=True)
+    else:
+        print("No changes to commit (working tree clean)")
 
     # Optional: push to origin if credentials are configured
     try:
