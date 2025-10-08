@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Body
 from datetime import datetime
-import subprocess, os, tempfile, json, time, uuid
+import subprocess, os, tempfile, json, time, uuid, shutil
 
 app = FastAPI(title="C\u00f3digo Vivo - Generator")
 
@@ -157,25 +157,33 @@ def generate_patch(payload: dict = Body(...)):
     try:
         push_env = os.environ.copy()
         ssh_key = os.getenv('SSH_KEY_PATH')
+        ssh_available = shutil.which('ssh') is not None
         if ssh_key:
-            # Use GIT_SSH_COMMAND to instruct git to use the mounted private key
-            push_env['GIT_SSH_COMMAND'] = f"ssh -i {ssh_key} -o StrictHostKeyChecking=no"
-            # If origin is an https GitHub URL, switch it to the SSH form so the GIT_SSH_COMMAND is used.
-            try:
-                remote_res = run_cmd(["git", "remote", "get-url", "origin"], cwd=working_repo, check=False)
-                remote_url = (remote_res.stdout or "").strip() if hasattr(remote_res, 'stdout') else ''
-                if remote_url.startswith('https://github.com/'):
-                    owner_path = remote_url[len('https://github.com/'):]
-                    owner_path = owner_path.rstrip('\n').rstrip('/')
-                    if owner_path.endswith('.git'):
-                        owner_path = owner_path[:-4]
-                    ssh_url = f"git@github.com:{owner_path}.git"
-                    print(f"Converting origin remote to SSH URL: {ssh_url}")
-                    run_cmd(["git", "remote", "set-url", "origin", ssh_url], cwd=working_repo, check=True)
-            except Exception as e:
-                print("Warning: could not inspect or convert origin remote:", e)
-        # Perform the push (may still fail if credentials missing)
-        run_cmd(["git", "push", "origin", branch_name], cwd=working_repo, env=push_env)
+            if not ssh_available:
+                print("Aviso: SSH key provided but 'ssh' binary not found in container; skipping push. Install openssh-client in the image to enable pushes.")
+            else:
+                # Use GIT_SSH_COMMAND to instruct git to use the mounted private key
+                push_env['GIT_SSH_COMMAND'] = f"ssh -i {ssh_key} -o StrictHostKeyChecking=no"
+                # If origin is an https GitHub URL, switch it to the SSH form so the GIT_SSH_COMMAND is used.
+                try:
+                    remote_res = run_cmd(["git", "remote", "get-url", "origin"], cwd=working_repo, check=False)
+                    remote_url = (remote_res.stdout or "").strip() if hasattr(remote_res, 'stdout') else ''
+                    if remote_url.startswith('https://github.com/'):
+                        owner_path = remote_url[len('https://github.com/'):]
+                        owner_path = owner_path.rstrip('\n').rstrip('/')
+                        if owner_path.endswith('.git'):
+                            owner_path = owner_path[:-4]
+                        ssh_url = f"git@github.com:{owner_path}.git"
+                        print(f"Converting origin remote to SSH URL: {ssh_url}")
+                        run_cmd(["git", "remote", "set-url", "origin", ssh_url], cwd=working_repo, check=True)
+                except Exception as e:
+                    print("Warning: could not inspect or convert origin remote:", e)
+
+        # Only attempt push if we configured a GIT_SSH_COMMAND or if ssh is not required
+        if ssh_key and not ssh_available:
+            print("Skipping git push because SSH is not available in the container.")
+        else:
+            run_cmd(["git", "push", "origin", branch_name], cwd=working_repo, env=push_env)
     except Exception as e:
         print("Aviso: push falhou (provavelmente sem credenciais configuradas):", e)
 
