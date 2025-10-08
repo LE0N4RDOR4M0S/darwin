@@ -170,14 +170,39 @@ def generate_patch(payload: dict = Body(...)):
         # clone from the working_repo (could be the mounted repo or a temp clone)
         run_cmd(["git", "clone", "--branch", branch_name, working_repo, tmpdir], check=True)
 
-        # Build with maven
-        run_cmd(["mvn", "-B", "-DskipTests", "package"], cwd=tmpdir, check=True)
+        # Locate where the Maven project (pom.xml) lives inside the clone.
+        # Many repos have the actual Java project under an `app/` subfolder.
+        build_dir = tmpdir
+        pom_path = os.path.join(build_dir, 'pom.xml')
+        if not os.path.exists(pom_path):
+            print("pom.xml not at clone root, searching for pom.xml under clone...")
+            found_poms = []
+            for root, dirs, files in os.walk(tmpdir):
+                if 'pom.xml' in files:
+                    found_poms.append(os.path.join(root, 'pom.xml'))
+            if found_poms:
+                # Prefer app/pom.xml when present
+                preferred = None
+                for p in found_poms:
+                    if os.path.join('app', 'pom.xml') in p.replace('\\', '/'):
+                        preferred = p
+                        break
+                chosen = preferred or found_poms[0]
+                build_dir = os.path.dirname(chosen)
+                print(f"Using Maven project at: {build_dir}")
+            else:
+                raise RuntimeError(f"pom.xml not found in clone at {tmpdir}; looked for: {found_poms}")
 
-        # Find the jar
-        target_dir = os.path.join(tmpdir, "target")
+        # Build with maven from the detected project dir
+        run_cmd(["mvn", "-B", "-DskipTests", "package"], cwd=build_dir, check=True)
+
+        # Find the jar under the build_dir/target
+        target_dir = os.path.join(build_dir, "target")
+        if not os.path.isdir(target_dir):
+            raise RuntimeError(f"Maven build did not produce target/ directory in {build_dir}")
         jar_files = [f for f in os.listdir(target_dir) if f.endswith('.jar')]
         if not jar_files:
-            raise RuntimeError("Jar não encontrado no target")
+            raise RuntimeError(f"Jar não encontrado no target em {target_dir}")
         jar_path = os.path.join(target_dir, jar_files[0])
 
         # Run jar in background
