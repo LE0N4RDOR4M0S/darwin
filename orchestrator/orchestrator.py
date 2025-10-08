@@ -1,14 +1,29 @@
 from fastapi import FastAPI
-import requests, os, json
+import requests, os, json, time
 
 app = FastAPI(title="Código Vivo - Orchestrator")
 
 GENERATOR_URL = os.getenv("GENERATOR_URL", "http://generator:5000/generate")
 EVALUATOR_URL = os.getenv("EVALUATOR_URL", "http://evaluator:5001/evaluate")
 
+# Simple in-memory dedupe to avoid processing the same hotspot repeatedly in a short window
+LAST_HOTSPOTS = {}
+DEDUPE_TTL = int(os.getenv('ORCHESTRATOR_DEDUP_TTL', '30'))
+
 
 @app.post("/hotspot")
 def handle_hotspot(hotspot: dict):
+    # dedupe by stable JSON representation of the hotspot
+    try:
+        key = json.dumps(hotspot, sort_keys=True)
+    except Exception:
+        key = str(hotspot)
+    now = time.time()
+    last = LAST_HOTSPOTS.get(key)
+    if last and (now - last) < DEDUPE_TTL:
+        return {"status": "ignored_duplicate", "age": int(now - last)}
+    LAST_HOTSPOTS[key] = now
+
     # Retry logic for contacting generator (DNS / startup races)
     max_retries = 5
     backoff = 0.5
@@ -22,7 +37,6 @@ def handle_hotspot(hotspot: dict):
             print(f"Attempt {attempt+1}/{max_retries} failed contacting generator: {e}")
             last_exc = e
             time_to_sleep = backoff * (2 ** attempt)
-            import time
             time.sleep(time_to_sleep)
 
     if gen_res is None:
