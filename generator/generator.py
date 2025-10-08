@@ -26,7 +26,10 @@ def generate_patch(payload: dict = Body(...)):
     Gera um branch/patch, faz build e executa testes de carga para produzir candidate JSON.
     Retorna: { status, branch, candidate: {p95, error_rate} }
     """
-    file_path = payload.get("file", os.path.join(GENERATOR_WORKDIR, "src/main/java/com/leonardoramos/app/config/HttpClientConfig.java"))
+    # allow payload to specify a path (absolute or relative to repo); default to common path under app/
+    file_arg = payload.get("file")
+    if not file_arg:
+        file_arg = "app/src/main/java/com/leonardoramos/app/config/HttpClientConfig.java"
     branch_name = f"candidate_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
     # Determine working repo: if GENERATOR_WORKDIR is not a git repo, try to clone from GIT_REMOTE
@@ -54,6 +57,65 @@ def generate_patch(payload: dict = Body(...)):
     # Cria branch localmente
     run_cmd(["git", "checkout", "-b", branch_name], cwd=working_repo, check=True)
 
+    # Resolve the actual file path inside the working_repo
+    # We'll try a set of sensible candidates and also fall back to a recursive
+    # search by basename to handle variations in layout or when the payload
+    # provides a path relative to a different root.
+    candidate_paths = []
+    if os.path.isabs(file_arg):
+        candidate_paths.append(file_arg)
+        # also try interpreting absolute as relative to working_repo
+        candidate_paths.append(os.path.join(working_repo, file_arg.lstrip('/')))
+    else:
+        candidate_paths.append(os.path.join(working_repo, file_arg))
+        candidate_paths.append(os.path.join(working_repo, file_arg.lstrip('/')))
+        candidate_paths.append(os.path.join(working_repo, 'app', file_arg))
+        candidate_paths.append(os.path.join(working_repo, 'src', file_arg))
+        # try common Java layout under app/
+        if file_arg.startswith('src'):
+            candidate_paths.append(os.path.join(working_repo, 'app', file_arg))
+            candidate_paths.append(os.path.join(working_repo, 'app', file_arg.lstrip('/')))
+
+    file_path = None
+    tried = []
+    for p in candidate_paths:
+        tried.append(p)
+        if os.path.exists(p):
+            file_path = p
+            print(f"Resolved file via candidate path: {p}")
+            break
+
+    # If not found yet, try a recursive search for the basename inside the repo
+    if file_path is None:
+        basename = os.path.basename(file_arg)
+        print(f"File not found in candidate paths, searching for basename '{basename}' under {working_repo} ...")
+        matches = []
+        for root, dirs, files in os.walk(working_repo):
+            if basename in files:
+                matches.append(os.path.join(root, basename))
+        if matches:
+            # Prefer matches under src/main/java or app/ when possible
+            preferred = None
+            for m in matches:
+                if os.path.join('src', 'main', 'java') in m.replace('\\', '/') or '/app/' in m.replace('\\', '/'):
+                    preferred = m
+                    break
+            file_path = preferred or matches[0]
+            print(f"Found candidate file(s) by basename search: {matches}; selected: {file_path}")
+            tried.extend(matches)
+
+    if file_path is None:
+        # Provide a helpful diagnostic listing a few entries under the repo root to aid debugging
+        sample = []
+        try:
+            for i, entry in enumerate(os.listdir(working_repo)):
+                sample.append(entry)
+                if i >= 20:
+                    break
+        except Exception:
+            sample = ['<could not list working_repo>']
+        raise RuntimeError(f"Arquivo especificado não encontrado. Tentei: {tried}. Entradas em {working_repo} (top 20): {sample}")
+
     # Aplica edição simples (frágil, mas OK para PoC)
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -66,6 +128,23 @@ def generate_patch(payload: dict = Body(...)):
         f.write(new_content)
 
     run_cmd(["git", "add", "."], cwd=working_repo, check=True)
+
+    # Ensure git identity is configured locally so commits do not fail inside containers
+    try:
+        email_res = run_cmd(["git", "config", "--get", "user.email"], cwd=working_repo, check=False)
+        name_res = run_cmd(["git", "config", "--get", "user.name"], cwd=working_repo, check=False)
+        email = (email_res.stdout or "").strip() if hasattr(email_res, 'stdout') else ''
+        name = (name_res.stdout or "").strip() if hasattr(name_res, 'stdout') else ''
+        if not email:
+            email = os.getenv('GENERATOR_GIT_USER_EMAIL', 'leomatisa1000@gmail.com')
+            run_cmd(["git", "config", "user.email", email], cwd=working_repo, check=True)
+        if not name:
+            name = os.getenv('GENERATOR_GIT_USER_NAME', 'Generator')
+            run_cmd(["git", "config", "user.name", name], cwd=working_repo, check=True)
+        print(f"Using git identity: {name} <{email}>")
+    except Exception as e:
+        print("Warning: failed to ensure git identity:", e)
+
     run_cmd(["git", "commit", "-m", "Auto patch generated for hotspot"], cwd=working_repo, check=True)
 
     # Optional: push to origin if credentials are configured
@@ -81,9 +160,9 @@ def generate_patch(payload: dict = Body(...)):
 
     # Create a temp workdir to checkout and build
     with tempfile.TemporaryDirectory() as tmpdir:
-    print("Checkout branch into", tmpdir)
-    # clone from the working_repo (could be the mounted repo or a temp clone)
-    run_cmd(["git", "clone", "--branch", branch_name, working_repo, tmpdir], check=True)
+        print("Checkout branch into", tmpdir)
+        # clone from the working_repo (could be the mounted repo or a temp clone)
+        run_cmd(["git", "clone", "--branch", branch_name, working_repo, tmpdir], check=True)
 
         # Build with maven
         run_cmd(["mvn", "-B", "-DskipTests", "package"], cwd=tmpdir, check=True)
