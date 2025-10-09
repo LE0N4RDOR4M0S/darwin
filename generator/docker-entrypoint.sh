@@ -29,11 +29,22 @@ if [ -n "${SSH_PRIVATE_KEY_B64}" ]; then
   fi
 else
   if [ -f "${SSH_KEY_PATH}" ]; then
-    echo "SSH key file already present at ${SSH_KEY_PATH}; using mounted key"
-    chmod 600 "${SSH_KEY_PATH}" || true
-    chown root:root "${SSH_KEY_PATH}" || true
-    export GIT_SSH_COMMAND="ssh -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-    echo "GIT_SSH_COMMAND set (from mounted file)"
+    echo "SSH key file already present at ${SSH_KEY_PATH}; copying to a secure temp file to ensure correct permissions"
+    TMP_KEY="$(mktemp /tmp/id_rsa.XXXXXX)"
+    if cp "${SSH_KEY_PATH}" "${TMP_KEY}" 2>/dev/null; then
+      chmod 600 "${TMP_KEY}" || true
+      chown root:root "${TMP_KEY}" || true
+      KEY_TO_USE="${TMP_KEY}"
+      echo "Copied mounted key to ${TMP_KEY} and set permissions"
+    else
+      # Fall back to using the mounted key if copy fails (unlikely if readable)
+      echo "Warning: failed to copy mounted key; attempting to use mounted key directly"
+      chmod 600 "${SSH_KEY_PATH}" || true
+      KEY_TO_USE="${SSH_KEY_PATH}"
+    fi
+
+    export GIT_SSH_COMMAND="ssh -i ${KEY_TO_USE} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    echo "GIT_SSH_COMMAND set (from mounted file), key: ${KEY_TO_USE}"
   else
     echo "SSH_PRIVATE_KEY_B64 not provided and no key file at ${SSH_KEY_PATH}; git push via SSH will not be available."
   fi
