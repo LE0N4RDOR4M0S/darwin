@@ -40,6 +40,8 @@ services:
       - ../:/repo
       - ./secrets/ssh_id_rsa:/root/.ssh/id_rsa:ro
     working_dir: /app
+    env_file:
+      - ../.env
     environment:
       - SSH_KEY_PATH=/root/.ssh/id_rsa
     networks:
