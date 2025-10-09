@@ -7,11 +7,9 @@ if [ -n "${SSH_PRIVATE_KEY_B64}" ]; then
   echo "SSH_PRIVATE_KEY_B64 is set, attempting to create SSH key at ${SSH_KEY_PATH}"
   mkdir -p "$(dirname "${SSH_KEY_PATH}")" 2>/dev/null || true
 
-  # Decode into a temporary file first so we can validate the base64 input
   TMP_DEC="$(mktemp /tmp/id_rsa.dec.XXXXXX)"
   if printf '%s' "${SSH_PRIVATE_KEY_B64}" | base64 -d > "${TMP_DEC}" 2>/tmp/base64.err; then
     chmod 600 "${TMP_DEC}" || true
-    # Try to copy to the requested path; if it's read-only, fall back to the tmp file
     if cp "${TMP_DEC}" "${SSH_KEY_PATH}" 2>/dev/null; then
       KEY_TO_USE="${SSH_KEY_PATH}"
       chmod 600 "${KEY_TO_USE}" || true
@@ -30,7 +28,6 @@ if [ -n "${SSH_PRIVATE_KEY_B64}" ]; then
     echo "Continuing without SSH key configured. If you expect a key, ensure SSH_PRIVATE_KEY_B64 contains a valid base64 string of your private key." >&2
   fi
 else
-  # If no env var provided, check whether a key file was mounted at SSH_KEY_PATH already
   if [ -f "${SSH_KEY_PATH}" ]; then
     echo "SSH key file already present at ${SSH_KEY_PATH}; using mounted key"
     chmod 600 "${SSH_KEY_PATH}" || true
