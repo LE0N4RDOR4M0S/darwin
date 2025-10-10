@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+spec:
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+    spec:
+      containers:
+        - name: orchestrator
+          image: codigo-vivo/orchestrator:latest
+          ports:
+            - containerPort: 5003
+          envFrom:
+            - secretRef:
+                name: codigo-vivo-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+spec:
+  selector:
+    app: orchestrator
+  ports:
+    - port: 5003
+      targetPort: 5003
+  type: ClusterIP

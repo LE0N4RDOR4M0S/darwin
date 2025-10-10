@@ -1,15 +1,1 @@
-infra/secrets/
-
-**/target/
-*.class
-
-__pycache__/
-*.pyc
-
-**/docker-compose.override.yml
-
-.vscode/
-*.swp
-*.swo
-
-.log
+secrets/

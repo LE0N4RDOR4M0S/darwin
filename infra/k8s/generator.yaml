@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: generator
+spec:
+  selector:
+    matchLabels:
+      app: generator
+  template:
+    metadata:
+      labels:
+        app: generator
+    spec:
+      containers:
+        - name: generator
+          image: codigo-vivo/generator:latest
+          ports:
+            - containerPort: 5002
+          envFrom:
+            - secretRef:
+                name: codigo-vivo-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: generator
+spec:
+  selector:
+    app: generator
+  ports:
+    - port: 5002
+      targetPort: 5002
+  type: ClusterIP

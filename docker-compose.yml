@@ -1,0 +1,71 @@
+services:
+
+  #app:
+    #build: ./app
+    #container_name: codigo-vivo-app
+    #ports:
+    #  - "${APP_PORT}:8080"
+    #environment:
+    #  - MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED=true
+    #  - MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=prometheus,health,info
+    #  - SPRING_PROFILES_ACTIVE=local
+    #networks:
+    #  - codigo-vivo-net
+    #depends_on:
+    #  - prometheus
+    #  - minio
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: codigo-vivo-prometheus
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "${PROMETHEUS_PORT}:9090"
+    networks:
+      - codigo-vivo-net
+
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: codigo-vivo-grafana
+    ports:
+      - "${GRAFANA_PORT}:3000"
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - codigo-vivo-net
+    volumes:
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: codigo-vivo-jaeger
+    ports:
+      - "${JAEGER_PORT}:16686"
+      - "6831:6831/udp"
+      - "6832:6832/udp"
+    networks:
+      - codigo-vivo-net
+
+  minio:
+    build: ./infra/minio
+    container_name: codigo-vivo-minio
+    ports:
+      - "${MINIO_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    volumes:
+      - ./infra/minio/data:/data
+    networks:
+      - codigo-vivo-net
+
+networks:
+  codigo-vivo-net:
+    driver: bridge

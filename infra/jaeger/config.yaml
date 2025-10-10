@@ -1,0 +1,16 @@
+collector:
+  zipkin:
+    http-port: 9411
+
+reporter:
+  log-spans: true
+
+sampler:
+  type: const
+  param: 1
+
+storage:
+  type: memory
+
+query:
+  base-path: /
