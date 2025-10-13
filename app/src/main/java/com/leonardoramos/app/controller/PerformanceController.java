@@ -5,21 +5,28 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Random;
+
 @RestController
-@RequestMapping
-public class Controller {
+public class PerformanceController {
+
+    private final Random random = new Random();
+
     @GetMapping("/hello")
     public String hello() {
-        try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        return "Hello, World!";
+        return "Código Vivo online 🚀";
     }
+
     @GetMapping("/process")
     public String processData(String input) {
         return input.toUpperCase();
+    }
+
+    @GetMapping("/slow")
+    public String simulateSlow() throws InterruptedException {
+        int delay = 1000 + random.nextInt(3000);
+        Thread.sleep(delay);
+        return "Processo concluído após " + delay + "ms";
     }
 
     @PostMapping("/compute")

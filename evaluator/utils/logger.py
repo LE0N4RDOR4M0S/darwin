@@ -6,7 +6,7 @@ def get_logger(name: str):
     if not logger.handlers:
         handler = logging.StreamHandler()
         formatter = logging.Formatter(
-            f"%(asctime)s | {Fore.CYAN}%(name)s{Style.RESET_ALL} | %(levelname)s | %(message)s",
+            f"%(asctime)s | {Fore.MAGENTA}%(name)s{Style.RESET_ALL} | %(levelname)s | %(message)s",
             "%H:%M:%S"
         )
         handler.setFormatter(formatter)

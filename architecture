@@ -1,14 +1,14 @@
 codigo-vivo/
 │
-├── .env.example                # Exemplo de variáveis de ambiente (NÃO COMMITAR .env real)
-├── docker-compose.yml          # Orquestração principal
-├── README.md                   # Descrição do projeto
-├── docs/                       # Documentação, diagramas e relatórios
+├── .env.example  --              # Exemplo de variáveis de ambiente (NÃO COMMITAR .env real)
+├── docker-compose.yml     --     # Orquestração principal
+├── README.md       --            # Descrição do projeto
+├── docs/   --                    # Documentação, diagramas e relatórios
 │   ├── arquitetura.md
 │   ├── fluxo_dados.png
 │   └── design_decisions.md
 │
-├── infra/                      # Infraestrutura e observabilidade
+├── infra/             --         # Infraestrutura e observabilidade
 │   ├── prometheus/
 │   │   └── prometheus.yml
 │   ├── grafana/
@@ -32,7 +32,7 @@ codigo-vivo/
 │   ├── gitlab_token.txt
 │   └── config.json
 │
-├── runtime-app/                # Aplicação alvo (o “organismo vivo”)
+├── runtime-app/       --         # Aplicação alvo (o “organismo vivo”)
 │   ├── src/main/java/com/example/codigovivo/
 │   │   ├── CodigoVivoApplication.java
 │   │   ├── controller/
@@ -55,7 +55,7 @@ codigo-vivo/
 │   ├── requirements.txt
 │   └── README.md
 │
-├── detector/                   # Hotspot detector (Prometheus + análise)
+├── detector/           --        # Hotspot detector (Prometheus + análise)
 │   ├── detector.py
 │   ├── queries/
 │   │   ├── latency_query.promql
@@ -64,7 +64,7 @@ codigo-vivo/
 │   ├── Dockerfile
 │   └── requirements.txt
 │
-├── generator/                  # Serviço de geração de patches
+├── generator/           --       # Serviço de geração de patches
 │   ├── generator.py
 │   ├── heuristics/
 │   │   ├── timeout_rule.py
@@ -92,7 +92,7 @@ codigo-vivo/
 │   ├── requirements.txt
 │   └── README.md
 │
-├── orchestrator/               # Coordena o ciclo de vida
+├── orchestrator/        --       # Coordena o ciclo de vida
 │   ├── orchestrator.py
 │   ├── utils/
 │   │   ├── api_client.py

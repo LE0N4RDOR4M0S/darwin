@@ -1,19 +1,19 @@
 services:
 
-  #app:
-    #build: ./app
-    #container_name: codigo-vivo-app
-    #ports:
-    #  - "${APP_PORT}:8080"
-    #environment:
-    #  - MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED=true
-    #  - MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=prometheus,health,info
-    #  - SPRING_PROFILES_ACTIVE=local
-    #networks:
-    #  - codigo-vivo-net
-    #depends_on:
-    #  - prometheus
-    #  - minio
+  app:
+    build: ./app
+    container_name: codigo-vivo-app
+    ports:
+      - "${APP_PORT}:8080"
+    environment:
+      - MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED=true
+      - MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=prometheus,health,info
+      - SPRING_PROFILES_ACTIVE=local
+    networks:
+      - codigo-vivo-net
+    depends_on:
+      - prometheus
+      - minio
 
   prometheus:
     image: prom/prometheus:latest
@@ -63,6 +63,51 @@ services:
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
     volumes:
       - ./infra/minio/data:/data
+    networks:
+      - codigo-vivo-net
+
+  detector:
+    build: ./detector
+    container_name: codigo-vivo-detector
+    ports:
+      - "5004:5004"
+    environment:
+      - PROMETHEUS_URL=http://prometheus:9090
+      - ORCHESTRATOR_URL=http://orchestrator:5003
+      - CHECK_INTERVAL=30
+    networks:
+      - codigo-vivo-net
+    depends_on:
+      - prometheus
+
+  evaluator:
+    build: ./evaluator
+    container_name: codigo-vivo-evaluator
+    ports:
+      - "5001:5001"
+    networks:
+      - codigo-vivo-net
+
+  orchestrator:
+    build: ./orchestrator
+    container_name: codigo-vivo-orchestrator
+    ports:
+      - "5003:5003"
+    depends_on:
+      - generator
+      - evaluator
+    networks:
+      - codigo-vivo-net
+
+  generator:
+    build: ./generator
+    container_name: codigo-vivo-generator
+    ports:
+      - "5002:5002"
+    environment:
+      - REPO_PATH=/repo
+    volumes:
+      - ./repo:/repo
     networks:
       - codigo-vivo-net
 

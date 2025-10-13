@@ -1,0 +1,1 @@
+avg(rate(process_cpu_seconds_total[2m])) by (instance)

@@ -1,0 +1,5 @@
+{
+  "latency_p95": 180.0,
+  "error_rate": 0.01,
+  "cpu_usage": 0.70
+}

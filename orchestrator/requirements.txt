@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+httpx
+colorama
+python-multipart
+prometheus_client
