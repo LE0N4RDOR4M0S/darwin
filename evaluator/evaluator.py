@@ -10,14 +10,60 @@ import tempfile
 app = FastAPI(title="Código Vivo Evaluator", version="1.0.0")
 logger = get_logger("evaluator")
 
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "time": datetime.now().isoformat()}
+    """Health check endpoint"""
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "service": "evaluator"
+    }
+
+
+@app.post("/evaluate")
+async def evaluate_patch(baseline: dict, candidate: dict):
+    """Evaluate a patch by comparing baseline vs candidate metrics"""
+    try:
+        logger.info("Starting patch evaluation")
+        
+        # Calcula score
+        score = evaluate_metrics(baseline, candidate)
+        
+        # Decide recomendação
+        if score >= 0.85:
+            recommendation = "approve_auto"
+        elif score >= 0.5:
+            recommendation = "review_manual"
+        else:
+            recommendation = "reject"
+        
+        # Build report
+        report = build_report(baseline, candidate, score, recommendation)
+        
+        logger.info(f"Evaluation complete. Score: {score}, Recommendation: {recommendation}")
+        
+        return {
+            "score": score,
+            "recommendation": recommendation,
+            "report": report,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error evaluating patch: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 @app.get('/metrics')
 async def metrics():
+    """Prometheus metrics"""
     data = generate_latest()
+    return Response(data, media_type=CONTENT_TYPE_LATEST)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5001)
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
 @app.post("/evaluate")

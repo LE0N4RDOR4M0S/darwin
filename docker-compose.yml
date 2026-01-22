@@ -106,11 +106,49 @@ services:
       - "5002:5002"
     environment:
       - REPO_PATH=/repo
+      - DETECTOR_URL=http://detector:5004
+      - EVALUATOR_URL=http://evaluator:5001
+      - ORCHESTRATOR_URL=http://orchestrator:5003
+      - LOG_LEVEL=INFO
     volumes:
       - ./repo:/repo
+    networks:
+      - codigo-vivo-net
+    depends_on:
+      - prometheus
+      - minio
+
+  telemetry-agent:
+    build: ./telemetry-agent
+    container_name: codigo-vivo-telemetry-agent
+    environment:
+      - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+      - LOKI_ENDPOINT=http://loki:3100
+      - PROMETHEUS_ENDPOINT=http://prometheus:9090
+      - LOG_LEVEL=INFO
+    networks:
+      - codigo-vivo-net
+    depends_on:
+      - jaeger
+      - loki
+
+  loki:
+    image: grafana/loki:latest
+    container_name: codigo-vivo-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infra/loki/loki-config.yml:/etc/loki/local-config.yml
+    command: -config.file=/etc/loki/local-config.yml
     networks:
       - codigo-vivo-net
 
 networks:
   codigo-vivo-net:
     driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  minio_data:
