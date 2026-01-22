@@ -1,83 +1,90 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-import json, os
+from fastapi import FastAPI, UploadFile, File, Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from metrics.scoring import evaluate_metrics
+from utils.report_builder import build_report
+from utils.logger import get_logger
+from datetime import datetime
+import json
+import tempfile
 
-app = FastAPI(title="Código Vivo - Evaluator")
-
-# Thresholds configuráveis via env vars (valores percentuais)
-P95_IMPROVEMENT_AUTO = float(os.getenv('P95_IMPROVEMENT_AUTO', '5.0'))
-P95_IMPROVEMENT_MANUAL = float(os.getenv('P95_IMPROVEMENT_MANUAL', '0.0'))
-# Tolerância de aumento de error_rate em pontos percentuais (ex: 0.01 = 1%)
-ERROR_RATE_INCREASE_TOLERANCE = float(os.getenv('ERROR_RATE_INCREASE_TOLERANCE', '0.0'))
+app = FastAPI(title="Código Vivo Evaluator", version="1.0.0")
+logger = get_logger("evaluator")
 
 
-def validate_metrics(d: dict, name: str):
-    if not isinstance(d, dict):
-        raise HTTPException(status_code=400, detail=f"{name} must be a JSON object")
-    for k in ('p95', 'error_rate'):
-        if k not in d:
-            raise HTTPException(status_code=400, detail=f"{name} missing required key: {k}")
-        try:
-            float(d[k])
-        except Exception:
-            raise HTTPException(status_code=400, detail=f"{name} key {k} must be numeric")
+@app.get("/health")
+async def health():
+    """Health check endpoint"""
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "service": "evaluator"
+    }
 
 
 @app.post("/evaluate")
-async def evaluate(baseline: UploadFile = File(...), candidate: UploadFile = File(...)):
+async def evaluate_patch(baseline: dict, candidate: dict):
+    """Evaluate a patch by comparing baseline vs candidate metrics"""
     try:
-        b = json.loads(await baseline.read())
-    except Exception:
-        raise HTTPException(status_code=400, detail="Baseline is not valid JSON")
-    try:
-        c = json.loads(await candidate.read())
-    except Exception:
-        raise HTTPException(status_code=400, detail="Candidate is not valid JSON")
-
-    validate_metrics(b, 'baseline')
-    validate_metrics(c, 'candidate')
-
-    # Calculos
-    try:
-        b_p95 = float(b['p95'])
-        c_p95 = float(c['p95'])
-        b_err = float(b['error_rate'])
-        c_err = float(c['error_rate'])
+        logger.info("Starting patch evaluation")
+        
+        # Calcula score
+        score = evaluate_metrics(baseline, candidate)
+        
+        # Decide recomendação
+        if score >= 0.85:
+            recommendation = "approve_auto"
+        elif score >= 0.5:
+            recommendation = "review_manual"
+        else:
+            recommendation = "reject"
+        
+        # Build report
+        report = build_report(baseline, candidate, score, recommendation)
+        
+        logger.info(f"Evaluation complete. Score: {score}, Recommendation: {recommendation}")
+        
+        return {
+            "score": score,
+            "recommendation": recommendation,
+            "report": report,
+            "timestamp": datetime.now().isoformat()
+        }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid metric values: {e}")
+        logger.error(f"Error evaluating patch: {e}")
+        return {"status": "error", "message": str(e)}
 
-    # Percentual de melhoria (positivo significa candidate pior se usarmos (b-c)/b*100)
-    delta_p95 = (b_p95 - c_p95) / b_p95 * 100 if b_p95 != 0 else 0.0
-    delta_error = (c_err - b_err)
 
-    explanation = []
+@app.get('/metrics')
+async def metrics():
+    """Prometheus metrics"""
+    data = generate_latest()
+    return Response(data, media_type=CONTENT_TYPE_LATEST)
 
-    # Decisão baseada em thresholds configuráveis
-    if delta_p95 > P95_IMPROVEMENT_AUTO and delta_error <= ERROR_RATE_INCREASE_TOLERANCE:
-        decision = 'approve_auto'
-        explanation.append(f'p95 improved by {delta_p95:.2f}% (>{P95_IMPROVEMENT_AUTO}%) and error rate not increased beyond tolerance')
-    elif delta_p95 > P95_IMPROVEMENT_MANUAL:
-        decision = 'manual_review'
-        explanation.append(f'p95 improved by {delta_p95:.2f}% (>{P95_IMPROVEMENT_MANUAL}%) but requires manual check')
-        if delta_error > ERROR_RATE_INCREASE_TOLERANCE:
-            explanation.append(f'error rate increased by {delta_error:.4f} (> tolerance {ERROR_RATE_INCREASE_TOLERANCE})')
-    else:
-        decision = 'reject'
-        explanation.append(f'p95 not improved (delta {delta_p95:.2f}%)')
-        if delta_error > ERROR_RATE_INCREASE_TOLERANCE:
-            explanation.append(f'error rate increased by {delta_error:.4f} (> tolerance {ERROR_RATE_INCREASE_TOLERANCE})')
 
-    result = {
-        'decision': decision,
-        'delta_p95_percent': round(delta_p95, 3),
-        'delta_error_absolute': round(delta_error, 6),
-        'thresholds': {
-            'p95_improvement_auto': P95_IMPROVEMENT_AUTO,
-            'p95_improvement_manual': P95_IMPROVEMENT_MANUAL,
-            'error_rate_increase_tolerance': ERROR_RATE_INCREASE_TOLERANCE
-        },
-        'explanation': explanation,
-        'baseline': {'p95': b_p95, 'error_rate': b_err},
-        'candidate': {'p95': c_p95, 'error_rate': c_err}
-    }
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5001)
+    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
-    return result
+@app.post("/evaluate")
+async def evaluate(baseline: UploadFile = File(...), candidate: UploadFile = File(...)):
+    """
+    Recebe dois arquivos JSON (baseline e candidate),
+    calcula deltas de métricas e define uma decisão automatizada.
+    """
+    try:
+        baseline_data = json.load(baseline.file)
+        candidate_data = json.load(candidate.file)
+
+        result = evaluate_metrics(baseline_data, candidate_data)
+        report = build_report(result)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+            json.dump(report, tmp, indent=2)
+            logger.info(f"📊 Relatório gerado: {tmp.name}")
+
+        return report
+
+    except Exception as e:
+        logger.error(f"❌ Erro durante avaliação: {e}")
+        return {"status": "error", "message": str(e)}

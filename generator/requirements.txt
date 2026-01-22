@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+gitpython
+transformers
+torch
+colorama
+prometheus_client

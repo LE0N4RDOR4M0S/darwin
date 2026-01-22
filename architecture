@@ -1,0 +1,114 @@
+codigo-vivo/
+│
+├── .env.example  --              # Exemplo de variáveis de ambiente (NÃO COMMITAR .env real)
+├── docker-compose.yml     --     # Orquestração principal
+├── README.md       --            # Descrição do projeto
+├── docs/   --                    # Documentação, diagramas e relatórios
+│   ├── arquitetura.md
+│   ├── fluxo_dados.png
+│   └── design_decisions.md
+│
+├── infra/             --         # Infraestrutura e observabilidade
+│   ├── prometheus/
+│   │   └── prometheus.yml
+│   ├── grafana/
+│   │   └── dashboards/
+│   ├── jaeger/
+│   │   └── config.yaml
+│   ├── minio/
+│   │   ├── Dockerfile
+│   │   ├── init.sh
+│   │   └── data/               # Montado como volume
+│   └── k8s/                    # Manifests (para deploy real em cluster)
+│       ├── app-deploy.yaml
+│       ├── prometheus.yaml
+│       ├── generator.yaml
+│       ├── evaluator.yaml
+│       └── orchestrator.yaml
+│
+├── secrets/                    # chaves SSH, tokens, configs locais
+│   ├── id_rsa
+│   ├── id_rsa.pub
+│   ├── gitlab_token.txt
+│   └── config.json
+│
+├── runtime-app/       --         # Aplicação alvo (o “organismo vivo”)
+│   ├── src/main/java/com/example/codigovivo/
+│   │   ├── CodigoVivoApplication.java
+│   │   ├── controller/
+│   │   ├── service/
+│   │   ├── repository/
+│   │   └── config/
+│   │       └── HttpClientConfig.java
+│   ├── pom.xml
+│   ├── Dockerfile
+│   └── README.md
+│
+├── telemetry-agent/            # Agente interno de métricas
+│   ├── src/
+│   │   ├── telemetry_collector.py
+│   │   └── exporters/
+│   │       ├── prometheus_exporter.py
+│   │       ├── jaeger_exporter.py
+│   │       └── loki_exporter.py
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── README.md
+│
+├── detector/           --        # Hotspot detector (Prometheus + análise)
+│   ├── detector.py
+│   ├── queries/
+│   │   ├── latency_query.promql
+│   │   ├── error_query.promql
+│   │   └── cpu_usage.promql
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── generator/           --       # Serviço de geração de patches
+│   ├── generator.py
+│   ├── heuristics/
+│   │   ├── timeout_rule.py
+│   │   ├── pool_size_rule.py
+│   │   └── caching_rule.py
+│   ├── models/                 # Caso IA seja usada
+│   │   └── tinyllama_adapter.py
+│   ├── utils/
+│   │   ├── git_helper.py
+│   │   ├── ast_parser.py
+│   │   └── patch_writer.py
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── README.md
+│
+├── evaluator/                  # Serviço que compara baseline vs candidato
+│   ├── evaluator.py
+│   ├── metrics/
+│   │   ├── baseline.json
+│   │   ├── candidate.json
+│   │   └── scoring.py
+│   ├── utils/
+│   │   └── report_builder.py
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── README.md
+│
+├── orchestrator/        --       # Coordena o ciclo de vida
+│   ├── orchestrator.py
+│   ├── utils/
+│   │   ├── api_client.py
+│   │   ├── job_scheduler.py
+│   │   └── logger.py
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── README.md
+│
+└── tests/                      # Testes globais e exemplos de integração
+    ├── integration/
+    ├── unit/
+    ├── load/
+    ├── sandbox/
+    │   ├── Dockerfile
+    │   └── sandbox_runner.py
+    └── data/
+        ├── baseline.json
+        └── candidate.json

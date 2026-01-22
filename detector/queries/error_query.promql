@@ -1,0 +1,3 @@
+sum(rate(http_server_requests_seconds_count{status!~"2.."}[2m])) by (uri)
+  /
+sum(rate(http_server_requests_seconds_count[2m])) by (uri)

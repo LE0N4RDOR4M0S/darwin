@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: evaluator
+spec:
+  selector:
+    matchLabels:
+      app: evaluator
+  template:
+    metadata:
+      labels:
+        app: evaluator
+    spec:
+      containers:
+        - name: evaluator
+          image: codigo-vivo/evaluator:latest
+          ports:
+            - containerPort: 5001
+          envFrom:
+            - secretRef:
+                name: codigo-vivo-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: evaluator
+spec:
+  selector:
+    app: evaluator
+  ports:
+    - port: 5001
+      targetPort: 5001
+  type: ClusterIP
