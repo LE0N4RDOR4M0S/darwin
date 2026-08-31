@@ -1,90 +1,73 @@
-from fastapi import FastAPI, UploadFile, File, Response
+from datetime import datetime
+from fastapi import FastAPI, Response, HTTPException
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+from models import EvaluationRequest, EvaluationResult, Recommendation
 from metrics.scoring import evaluate_metrics
 from utils.report_builder import build_report
 from utils.logger import get_logger
-from datetime import datetime
-import json
-import tempfile
 
-app = FastAPI(title="Código Vivo Evaluator", version="1.0.0")
+app = FastAPI(title="Código Vivo - Evaluator", version="1.0.0")
 logger = get_logger("evaluator")
 
 
 @app.get("/health")
 async def health():
-    """Health check endpoint"""
     return {
-        "status": "ok",
+        "status": "healthy",
+        "service": "evaluator",
         "timestamp": datetime.now().isoformat(),
-        "service": "evaluator"
     }
 
 
-@app.post("/evaluate")
-async def evaluate_patch(baseline: dict, candidate: dict):
-    """Evaluate a patch by comparing baseline vs candidate metrics"""
+@app.post("/evaluate", response_model=EvaluationResult)
+async def evaluate_patch(req: EvaluationRequest):
+    """
+    Avalia a variação de desempenho entre baseline e candidate:
+      - Calcula deltas percentuais
+      - Aplica pontuação ponderada
+      - Emite recomendação: approve_auto, review_manual ou reject
+      - Constrói relatório auditável
+    """
+    logger.info(f"🔬 Avaliação iniciada para o ciclo: {req.cycle_id or 'unknown'}")
+
     try:
-        logger.info("Starting patch evaluation")
-        
-        # Calcula score
-        score = evaluate_metrics(baseline, candidate)
-        
-        # Decide recomendação
-        if score >= 0.85:
-            recommendation = "approve_auto"
-        elif score >= 0.5:
-            recommendation = "review_manual"
-        else:
-            recommendation = "reject"
-        
-        # Build report
-        report = build_report(baseline, candidate, score, recommendation)
-        
-        logger.info(f"Evaluation complete. Score: {score}, Recommendation: {recommendation}")
-        
-        return {
-            "score": score,
-            "recommendation": recommendation,
-            "report": report,
-            "timestamp": datetime.now().isoformat()
-        }
+        baseline_dict = req.baseline.model_dump()
+        candidate_dict = req.candidate.model_dump()
+
+        result = evaluate_metrics(baseline_dict, candidate_dict)
+        report = build_report(result)
+
+        recommendation_str = result.get("decision", "reject")
+        try:
+            recommendation = Recommendation(recommendation_str)
+        except ValueError:
+            recommendation = Recommendation.REJECT
+
+        logger.info(f"📊 Avaliação concluída. Cycle: {req.cycle_id} | Score: {result.get('score')} | Rec: {recommendation}")
+
+        return EvaluationResult(
+            score=result.get("score", 0.0),
+            recommendation=recommendation,
+            delta_latency_pct=result.get("delta_latency_pct", 0.0),
+            delta_error_pct=result.get("delta_error_pct", 0.0),
+            delta_cpu_pct=result.get("delta_cpu_pct", 0.0),
+            confidence=result.get("confidence", 0.0),
+            report=report,
+            cycle_id=req.cycle_id,
+        )
+
     except Exception as e:
-        logger.error(f"Error evaluating patch: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"❌ Erro durante avaliação: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro interno no Evaluator: {str(e)}")
 
 
-@app.get('/metrics')
+@app.get("/metrics")
 async def metrics():
-    """Prometheus metrics"""
     data = generate_latest()
-    return Response(data, media_type=CONTENT_TYPE_LATEST)
+    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5001)
-    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
-
-@app.post("/evaluate")
-async def evaluate(baseline: UploadFile = File(...), candidate: UploadFile = File(...)):
-    """
-    Recebe dois arquivos JSON (baseline e candidate),
-    calcula deltas de métricas e define uma decisão automatizada.
-    """
-    try:
-        baseline_data = json.load(baseline.file)
-        candidate_data = json.load(candidate.file)
-
-        result = evaluate_metrics(baseline_data, candidate_data)
-        report = build_report(result)
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-            json.dump(report, tmp, indent=2)
-            logger.info(f"📊 Relatório gerado: {tmp.name}")
-
-        return report
-
-    except Exception as e:
-        logger.error(f"❌ Erro durante avaliação: {e}")
-        return {"status": "error", "message": str(e)}
