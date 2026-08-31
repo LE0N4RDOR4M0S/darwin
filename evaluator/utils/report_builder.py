@@ -1,22 +1,24 @@
 from datetime import datetime
 
+
 def build_report(result: dict) -> dict:
     """
-    Gera um relatório final padronizado e auditável.
+    Gera um relatório final padronizado e auditável para armazenamento no MinIO / DB.
     """
     return {
         "timestamp": datetime.now().isoformat(),
         "summary": {
-            "decision": result["decision"],
-            "score": result["score"]
+            "decision": result.get("decision", "reject"),
+            "score": result.get("score", 0.0),
+            "confidence": result.get("confidence", 0.0),
         },
         "details": {
-            "delta_latency(%)": result["delta_latency(%)"],
-            "delta_error(%)": result["delta_error(%)"],
-            "delta_cpu(%)": result["delta_cpu(%)"]
+            "delta_latency_pct": result.get("delta_latency_pct", 0.0),
+            "delta_error_pct": result.get("delta_error_pct", 0.0),
+            "delta_cpu_pct": result.get("delta_cpu_pct", 0.0),
         },
         "metadata": {
-            "baseline": result["baseline"],
-            "candidate": result["candidate"]
-        }
+            "baseline": result.get("baseline", {}),
+            "candidate": result.get("candidate", {}),
+        },
     }
