@@ -14,7 +14,7 @@ public class PerformanceController {
 
     @GetMapping("/hello")
     public String hello() {
-        return "Código Vivo online 🚀";
+        return "Código Vivo online";
     }
 
     @GetMapping("/process")
