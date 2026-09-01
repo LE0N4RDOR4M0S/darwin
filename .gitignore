@@ -1,3 +1,10 @@
 secrets/
 
 .env
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime patch repo
+repo/
